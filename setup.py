@@ -6,7 +6,7 @@ with open("README.md") as f:
     long_description = f.read()
 
 setuptools.setup(
-    name="universal_pathlib",
+    name="universal_pathlib_edge",
     version=__version__,
     author="Andrew Fulton",
     author_email="andrewfulton9@gmail.com",
