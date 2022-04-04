@@ -1,5 +1,6 @@
 import pathlib
 import re
+from typing import IO, Iterator, List
 import urllib
 
 from fsspec.registry import (
@@ -57,7 +58,7 @@ class _FSSpecAccessor:
     def __getattribute__(self, item):
         class_attrs = ["_url", "_fs", "__class__"]
         if item in class_attrs:
-            return super().__getattribute__(item)
+            return object.__getattribute__(self, item)
 
         class_methods = [
             "__init__",
@@ -67,12 +68,9 @@ class _FSSpecAccessor:
             "_format_path",
         ]
         if item in class_methods:
-            return lambda *args, **kwargs: getattr(self.__class__, item)(
-                self, *args, **kwargs
-            )
+            return object.__getattribute__(self, item)
 
-        d = object.__getattribute__(self, "__dict__")
-        fs = d.get("_fs", None)
+        fs = object.__getattribute__(self, "_fs")
         if fs is not None:
             method = getattr(fs, item, None)
             if method:
@@ -90,22 +88,6 @@ class UPath(pathlib.Path):
     _flavour = pathlib._posix_flavour
     __slots__ = ("_url", "_kwargs", "_closed", "fs")
 
-    not_implemented = [
-        "cwd",
-        "home",
-        "expanduser",
-        "group",
-        "is_mount",
-        "is_symlink",
-        "is_socket",
-        "is_fifo",
-        "is_block_device",
-        "is_char_device",
-        "lchmod",
-        "lstat",
-        "owner",
-        "readlink",
-    ]
     _default_accessor = _FSSpecAccessor
 
     def __new__(cls, *args, **kwargs):
@@ -154,15 +136,7 @@ class UPath(pathlib.Path):
             self._accessor = self._default_accessor(self._url, *args, **kwargs)
         self.fs = self._accessor._fs
 
-    def __getattribute__(self, item):
-        if item == "__class__":
-            return super().__getattribute__("__class__")
-        if item in getattr(self.__class__, "not_implemented"):
-            raise NotImplementedError(f"UPath has no attribute {item}")
-        else:
-            return super().__getattribute__(item)
-
-    def _format_parsed_parts(self, drv, root, parts):
+    def _format_parsed_parts(self, drv: str, root: str, parts: List[str]):
         if parts:
             join_parts = parts[1:] if parts[0] == "/" else parts
         else:
@@ -178,7 +152,7 @@ class UPath(pathlib.Path):
         return formatted
 
     @property
-    def path(self):
+    def path(self) -> str:
         if self._parts:
             join_parts = (
                 self._parts[1:] if self._parts[0] == "/" else self._parts
@@ -188,10 +162,10 @@ class UPath(pathlib.Path):
         else:
             return "/"
 
-    def open(self, *args, **kwargs):
+    def open(self, *args, **kwargs) -> IO:
         return self._accessor.open(self, *args, **kwargs)
 
-    def iterdir(self):
+    def iterdir(self) -> Iterator["UPath"]:
         """Iterate over the files in this directory.  Does not yield any
         result for the special paths '.' and '..'.
         """
@@ -210,19 +184,23 @@ class UPath(pathlib.Path):
             if self._closed:
                 self._raise_closed()
 
-    def glob(self, pattern):
+    def glob(self, pattern: str) -> Iterator["UPath"]:
         path = self.joinpath(pattern)
         for name in self._accessor.glob(self, path=path.path):
             name = self._sub_path(name)
             name = name.split(self._flavour.sep)
             yield self._make_child(name)
 
+    def rglob(self, pattern: str) -> Iterator["UPath"]:
+        # Not supported by fsspec
+        raise NotImplementedError
+
     def _sub_path(self, name):
         # only want the path name with iterdir
         sp = self.path
         return re.sub(f"^({sp}|{sp[1:]})/", "", name)
 
-    def exists(self):
+    def exists(self) -> bool:
         """
         Whether this path exists.
         """
@@ -235,29 +213,41 @@ class UPath(pathlib.Path):
         else:
             return self._accessor.exists(self)
 
-    def is_dir(self):
+    def is_dir(self) -> bool:
         info = self._accessor.info(self)
         if info["type"] == "directory":
             return True
         return False
 
-    def is_file(self):
+    def is_file(self) -> bool:
         info = self._accessor.info(self)
         if info["type"] == "file":
             return True
         return False
 
-    def chmod(self, mod):
+    def chmod(self, mode) -> None:
         raise NotImplementedError
 
-    def rename(self, target):
+    def lchmod(self, mode) -> None:
+        raise NotImplementedError
+
+    def symlink_to(self, target, target_is_directory=False) -> None:
+        raise NotImplementedError
+
+    def link_to(self, target, target_is_directory=False) -> None:
+        raise NotImplementedError
+
+    def rename(self, target) -> None:
         # can be implemented, but may be tricky
         raise NotImplementedError
 
-    def touch(self, trunicate=True, **kwargs):
+    def replace(self, target) -> None:
+        raise NotImplementedError
+
+    def touch(self, trunicate=True, **kwargs) -> None:
         self._accessor.touch(self, trunicate=trunicate, **kwargs)
 
-    def unlink(self, missing_ok=False):
+    def unlink(self, missing_ok=False) -> None:
         if not self.exists():
             if not missing_ok:
                 raise FileNotFoundError
@@ -265,15 +255,60 @@ class UPath(pathlib.Path):
                 return
         self._accessor.rm(self, recursive=False)
 
-    def rmdir(self, recursive=True):
+    def rmdir(self, recursive=True) -> None:
         """Add warning if directory not empty
         assert is_dir?
         """
-        try:
-            assert self.is_dir()
-        except AssertionError:
+        if not self.is_dir():
             raise NotDirectoryError
         self._accessor.rm(self, recursive=recursive)
+
+    @classmethod
+    def cwd(cls) -> "UPath":
+        raise NotImplementedError
+
+    @classmethod
+    def home(cls) -> "UPath":
+        raise NotImplementedError
+
+    def expanduser(self) -> "UPath":
+        raise NotImplementedError
+
+    def owner(self) -> str:
+        raise NotImplementedError
+
+    def group(self) -> str:
+        raise NotImplementedError
+
+    def readlink(self) -> "UPath":
+        return self
+
+    def stat(self):
+        return self._accessor.stat(self)
+
+    def lstat(self):
+        return self.stat()
+
+    def is_mount(self) -> bool:
+        return False
+
+    def is_symlink(self) -> bool:
+        return False
+
+    def is_socket(self) -> bool:
+        return False
+
+    def is_fifo(self) -> bool:
+        return False
+
+    def is_block_device(self) -> bool:
+        return False
+
+    def is_char_device(self) -> bool:
+        return False
+
+    def samefile(self, other_path: "UPath") -> bool:
+        return self.stat() == other_path.stat()
 
     @classmethod
     def _from_parts_init(cls, args, init=False):

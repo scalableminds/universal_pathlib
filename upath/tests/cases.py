@@ -61,29 +61,13 @@ class BaseTests:
         assert path.is_file()
         assert not self.path.is_file()
 
-    def test_is_mount(self):
-        with pytest.raises(NotImplementedError):
-            self.path.is_mount()
-
-    def test_is_symlink(self):
-        with pytest.raises(NotImplementedError):
-            self.path.is_symlink()
-
-    def test_is_socket(self):
-        with pytest.raises(NotImplementedError):
-            self.path.is_socket()
-
-    def test_is_fifo(self):
-        with pytest.raises(NotImplementedError):
-            self.path.is_fifo()
-
-    def test_is_block_device(self):
-        with pytest.raises(NotImplementedError):
-            self.path.is_block_device()
-
-    def test_is_char_device(self):
-        with pytest.raises(NotImplementedError):
-            self.path.is_char_device()
+    def test_other_is_methods(self):
+        assert not self.path.is_mount()
+        assert not self.path.is_symlink()
+        assert not self.path.is_socket()
+        assert not self.path.is_fifo()
+        assert not self.path.is_block_device()
+        assert not self.path.is_char_device()
 
     def test_iterdir(self, local_testdir):
         pl_path = Path(local_testdir)
@@ -104,8 +88,7 @@ class BaseTests:
             self.path.lchmod(mode=77)
 
     def test_lstat(self):
-        with pytest.raises(NotImplementedError):
-            self.path.lstat()
+        assert self.path.stat() == self.path.lstat()
 
     def test_mkdir(self):
         new_dir = self.path.joinpath("new_dir")
@@ -113,7 +96,9 @@ class BaseTests:
         assert new_dir.exists()
 
     def test_open(self):
-        pass
+        mock = self.path.joinpath("file2.txt")
+        with mock.open("rb") as f:
+            assert f.read() == b"hello world"
 
     def test_owner(self):
         with pytest.raises(NotImplementedError):
@@ -132,28 +117,31 @@ class BaseTests:
         )
 
     def test_readlink(self):
-        with pytest.raises(NotImplementedError):
-            self.path.readlink()
+        assert self.path == self.path.readlink()
 
     @pytest.mark.xfail
     def test_rename(self):
-        # need to implement
-        raise False
+        with pytest.raises(NotImplementedError):
+            self.path.rename(UPath("other"))
 
     def test_replace(self):
-        pass
+        with pytest.raises(NotImplementedError):
+            self.path.rename(UPath("other"))
 
     def test_resolve(self):
-        pass
+        with pytest.raises(NotImplementedError):
+            self.path.resolve()
 
-    def test_rglob(self):
-        pass
+    def test_rglob(self, pathlib_base):
+        with pytest.raises(NotImplementedError):
+            list(self.path.rglob("*.txt"))
 
     def test_samefile(self):
-        pass
+        assert self.path.samefile(self.path)
 
     def test_symlink_to(self):
-        pass
+        with pytest.raises(NotImplementedError):
+            self.path.symlink_to(UPath("test"))
 
     def test_touch_unlink(self):
         path = self.path.joinpath("test_touch.txt")
@@ -170,7 +158,8 @@ class BaseTests:
         path.unlink(missing_ok=True)
 
     def test_link_to(self):
-        pass
+        with pytest.raises(NotImplementedError):
+            self.path.link_to(UPath("other"))
 
     def test_write_bytes(self, pathlib_base):
         fn = "test_write_bytes.txt"
